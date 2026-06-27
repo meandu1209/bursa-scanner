@@ -1,6 +1,8 @@
 import streamlit as st
 import yfinance as yf
+import pandas as pd
 
+# Set page configuration
 st.set_page_config(page_title="Bursa Top 100 Scanner", layout="wide")
 st.title("Bursa Malaysia Top 100 Stocks Scanner")
 
@@ -25,24 +27,50 @@ tickers = [
     "DUFU.KL", "SIMEPROP.KL", "KGB.KL", "SKYECHIP.KL", "DNEX.KL", "VELESTO.KL"
 ]
 
-if st.button("Run Scanner"):
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    for i, ticker in enumerate(tickers):
-        # Update progress
-        progress = (i + 1) / len(tickers)
-        progress_bar.progress(progress)
-        status_text.text(f"Scanning {ticker} ({i+1}/{len(tickers)})...")
+if st.button("Run Batch Scanner"):
+    with st.spinner("Fetching data and calculating indicators..."):
+        # Batch download for speed
+        data = yf.download(tickers, period="3mo", group_by='ticker', progress=False)
         
-        # Fetch data
-        stock = yf.Ticker(ticker)
-        data = stock.history(period="1mo")
-        
-        if not data.empty:
-            with st.expander(f"Chart for {ticker}"):
-                st.line_chart(data['Close'])
-    
-    status_text.text("Scan Complete!")
+        results = []
+        for ticker in tickers:
+            try:
+                # Ensure data exists for this ticker
+                if ticker not in data: continue
+                df = data[ticker]
+                if len(df) < 60: continue
+                
+                # Calculate SMAs
+                sma10 = df['Close'].rolling(window=10).mean().iloc[-1]
+                sma20 = df['Close'].rolling(window=20).mean().iloc[-1]
+                sma60 = df['Close'].rolling(window=60).mean().iloc[-1]
+                price = df['Close'].iloc[-1]
+                
+                # Logic: SMA10 > SMA20 > SMA60 AND price > open (Green)
+                is_uptrend = (sma10 > sma20 > sma60)
+                is_green = df['Close'].iloc[-1] > df['Open'].iloc[-1]
+                
+                results.append({
+                    "Ticker": ticker.replace(".KL", ""),
+                    "Price": round(float(price), 2),
+                    "SMA10": round(float(sma10), 2),
+                    "SMA20": round(float(sma20), 2),
+                    "SMA60": round(float(sma60), 2),
+                    "Matches Criteria": (is_uptrend and is_green)
+                })
+            except Exception:
+                continue
 
-st.write("Click 'Run Scanner' to load charts for the Top 100 constituents.")
+        # Convert to DataFrame
+        df_results = pd.DataFrame(results)
+        
+        # Display as a clean, sortable table
+        st.dataframe(
+            df_results.sort_values(by="Matches Criteria", ascending=False).reset_index(drop=True),
+            use_container_width=True,
+            column_config={
+                "Matches Criteria": st.column_config.CheckboxColumn("Matches Criteria")
+            }
+        )
+
+st.write("Click 'Run Batch Scanner' to load the consolidated table.")
