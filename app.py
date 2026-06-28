@@ -10,66 +10,94 @@ tickers = [
     "MAYBANK.KL", "PBBANK.KL", "TENAGA.KL", "CIMB.KL", "IHH.KL", "PMETAL.KL",
     "HLBANK.KL", "SDG.KL", "RHBBANK.KL", "MISC.KL", "YTLPOWR.KL", "SUNWAY.KL",
     "PETGAS.KL", "PCHEM.KL", "CDB.KL", "99SMART.KL", "TM.KL", "IOICORP.KL",
-    "GAMUDA.KL", "MAXIS.KL"
+    "GAMUDA.KL", "MAXIS.KL", "KLK.KL", "YTL.KL", "IOIPG.KL", "NESTLE.KL",
+    "AMBANK.KL", "UTDPLT.KL", "WPRTS.KL", "HLFG.KL", "PETDAG.KL", "AXIATA.KL",
+    "KLCC.KL", "MRDIY.KL", "SIME.KL", "KPJ.KL", "GENM.KL", "GENTING.KL",
+    "PPB.KL", "QL.KL", "DIALOG.KL", "BKAWAN.KL", "HARTA.KL", "AIRPORT.KL",
+    "TELEKOM.KL", "AASIA.KL", "IJMPLNT.KL", "YTLCMT.KL", "SUPERMAX.KL",
+    "HSPLANT.KL", "AEON.KL", "HAPSENG.KL", "KFC.KL", "LITRAK.KL", "MEGB.KL",
+    "NCB.KL", "UNISEM.KL", "POS.KL", "MAHSING.KL", "MPI.KL", "AFG.KL",
+    "AFFIN.KL", "F&N.KL", "SPSETIA.KL", "TOPGLOV.KL", "BURSA.KL", "BSTEAD.KL",
+    "AIRASIA.KL", "SHELL.KL", "JCY.KL", "ORIENT.KL", "MAYBULK.KL",
+    "TCHONG.KL", "SAPCRES.KL", "IGB.KL", "STAR.KL", "IJMLAND.KL",
+    "KULIM.KL", "KENCANA.KL", "GAB.KL", "MPHB.KL", "TITAN.KL", "LPI.KL",
+    "MUDAJAYA.KL", "MEDIA.KL", "KNM.KL", "MRCB.KL", "DRBHCOM.KL", "WCT.KL",
+    "VITROX.KL", "FRONTKN.KL", "TIMECOM.KL", "UWC.KL", "SLVEST.KL",
+    "DUFU.KL", "SIMEPROP.KL", "KGB.KL", "SKYECHIP.KL", "DNEX.KL", "VELESTO.KL"
 ]
 
 if st.button("Run Batch Scanner"):
-    with st.spinner("Fetching data in batches..."):
+    with st.spinner("Scanning Bursa stocks..."):
         results = []
-        debug_rows = []
-        chunk_size = 5
+        failed = []
 
-        for i in range(0, len(tickers), chunk_size):
-            chunk = tickers[i:i + chunk_size]
-            data = yf.download(chunk, period="3mo", group_by="ticker", progress=False, auto_adjust=False)
+        progress = st.progress(0)
+        total = len(tickers)
 
-            st.write("Chunk:", chunk)
-            st.write("Columns:", data.columns)
+        for idx, ticker in enumerate(tickers):
+            try:
+                df = yf.download(ticker, period="6mo", progress=False, auto_adjust=False)
 
-            for ticker in chunk:
-                try:
-                    df = data[ticker] if len(chunk) > 1 else data
+                if df.empty or len(df) < 60:
+                    failed.append(ticker.replace(".KL", ""))
+                    progress.progress((idx + 1) / total)
+                    time.sleep(0.2)
+                    continue
 
-                    if df.empty:
-                        debug_rows.append({"Ticker": ticker, "Status": "Empty dataframe"})
-                        continue
+                df = df.dropna()
 
-                    if len(df) < 60:
-                        debug_rows.append({"Ticker": ticker, "Status": f"Only {len(df)} rows"})
-                        continue
+                if len(df) < 60 or "Open" not in df.columns or "Close" not in df.columns:
+                    failed.append(ticker.replace(".KL", ""))
+                    progress.progress((idx + 1) / total)
+                    time.sleep(0.2)
+                    continue
 
-                    sma10 = df["Close"].rolling(10).mean().iloc[-1]
-                    sma20 = df["Close"].rolling(20).mean().iloc[-1]
-                    sma60 = df["Close"].rolling(60).mean().iloc[-1]
-                    price = df["Close"].iloc[-1]
-                    is_green = df["Close"].iloc[-1] > df["Open"].iloc[-1]
-                    is_uptrend = sma10 > sma20 > sma60
+                sma10 = df["Close"].rolling(window=10).mean().iloc[-1]
+                sma20 = df["Close"].rolling(window=20).mean().iloc[-1]
+                sma60 = df["Close"].rolling(window=60).mean().iloc[-1]
+                price = df["Close"].iloc[-1]
 
-                    results.append({
-                        "Ticker": ticker.replace(".KL", ""),
-                        "Price": round(float(price), 2),
-                        "SMA10": round(float(sma10), 2),
-                        "SMA20": round(float(sma20), 2),
-                        "SMA60": round(float(sma60), 2),
-                        "Matches Criteria": bool(is_uptrend and is_green)
-                    })
+                if pd.isna(sma10) or pd.isna(sma20) or pd.isna(sma60) or pd.isna(price):
+                    failed.append(ticker.replace(".KL", ""))
+                    progress.progress((idx + 1) / total)
+                    time.sleep(0.2)
+                    continue
 
-                    debug_rows.append({"Ticker": ticker, "Status": "OK"})
+                is_uptrend = sma10 > sma20 > sma60
+                is_green = df["Close"].iloc[-1] > df["Open"].iloc[-1]
 
-                except Exception as e:
-                    debug_rows.append({"Ticker": ticker, "Status": f"Error: {str(e)}"})
+                results.append({
+                    "Ticker": ticker.replace(".KL", ""),
+                    "Price": round(float(price), 2),
+                    "SMA10": round(float(sma10), 2),
+                    "SMA20": round(float(sma20), 2),
+                    "SMA60": round(float(sma60), 2),
+                    "Matches Criteria": bool(is_uptrend and is_green)
+                })
 
-            time.sleep(1)
+            except Exception:
+                failed.append(ticker.replace(".KL", ""))
 
-        st.subheader("Debug Status")
-        st.dataframe(pd.DataFrame(debug_rows), use_container_width=True)
+            progress.progress((idx + 1) / total)
+            time.sleep(0.2)
 
         df_results = pd.DataFrame(results)
 
         if df_results.empty:
-            st.warning("No results returned.")
+            st.warning("No valid stock data returned.")
         else:
+            df_results = df_results.sort_values(
+                by=["Matches Criteria", "Ticker"],
+                ascending=[False, True]
+            ).reset_index(drop=True)
+
             st.dataframe(
-                df_results.sort_values(by="Matches Criteria", ascending=False).reset_index(drop=True),
-                use_container_width=True
+                df_results,
+                use_container_width=True,
+                column_config={
+                    "Matches Criteria": st.column_config.CheckboxColumn("Matches Criteria")
+                }
             )
+
+        if failed:
+            st.caption(f"Skipped {len(failed)} tickers with missing or invalid data.")
